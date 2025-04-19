@@ -1,2 +1,5 @@
+pyfiglet
+telethon
 requests
-beautifulsoup4
+cryptography
+emoji
