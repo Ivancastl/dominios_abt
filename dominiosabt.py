@@ -1,131 +1,146 @@
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
+import pyfiglet
 
-def get_domains_from_page(url):
-    headers = {"User-Agent": "Mozilla/5.0"}
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            domain_divs = soup.find_all('div', style=lambda value: value and 'word-wrap: break-word' in value)
-            domains = []
-            for div in domain_divs:
-                a_tag = div.find('a')
-                if a_tag and a_tag.text.strip():
-                    domains.append(a_tag.text.strip())
-            return domains
-        else:
-            print(f"[ERROR] Código {response.status_code} al acceder a {url}")
+class DomainHunter:
+    def __init__(self):
+        self.show_banner()
+
+    def show_banner(self):
+        """Muestra el banner ASCII art"""
+        os.system('cls' if os.name == 'nt' else 'clear')
+        print(pyfiglet.figlet_format("DomainHunter", font="slant"))
+        print("🔍 Buscador de dominios recién registrados")
+        print("👨💻 Creado por @ivancastl | Telegram: t.me/+_g4DIczsuI9hOWZh")
+        print("="*60 + "\n")
+
+    def get_domains_from_page(self, url):
+        """Obtiene dominios de una página específica"""
+        headers = {"User-Agent": "Mozilla/5.0"}
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                domain_divs = soup.find_all('div', style=lambda value: value and 'word-wrap: break-word' in value)
+                return [div.find('a').text.strip() for div in domain_divs if div.find('a')]
+            print(f"⚠️ Error {response.status_code} al acceder a {url}")
             return []
-    except Exception as e:
-        print(f"[EXCEPCIÓN] No se pudo acceder a {url}: {e}")
-        return []
+        except Exception as e:
+            print(f"❌ Excepción al acceder a {url}: {str(e)}")
+            return []
 
-def buscar_dominios(base_url, file_name, palabra_clave=None):
-    part = 1
-    dominios_encontrados = []
-    total_dominios_recorridos = 0
-
-    while True:
-        current_url = f"{base_url}{part}/"
-        domains = get_domains_from_page(current_url)
-
-        if domains:
+    def buscar_dominios(self, base_url, file_name, palabra_clave=None):
+        """Busca dominios en todas las partes de una URL base"""
+        part = 1
+        dominios_encontrados = []
+        
+        while True:
+            current_url = f"{base_url}{part}/"
+            domains = self.get_domains_from_page(current_url)
+            
+            if not domains:
+                print(f"🔍 Fin de resultados en {base_url}")
+                break
+                
             if palabra_clave:
                 dominios_filtrados = [d for d in domains if palabra_clave.lower() in d.lower()]
                 dominios_encontrados.extend(dominios_filtrados)
             else:
                 dominios_encontrados.extend(domains)
                 
-            total_dominios_recorridos += len(domains)
-            print(f"✅ Recuperados {len(domains)} dominios de {current_url}")
+            print(f"✅ Página {part}: {len(domains)} dominios encontrados")
             part += 1
+
+        if dominios_encontrados:
+            with open(file_name, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(dominios_encontrados))
+            print(f"\n💾 Guardados {len(dominios_encontrados)} dominios en {file_name}")
+            if palabra_clave:
+                print(f"🔎 Filtrados por palabra clave: '{palabra_clave}'")
         else:
-            print(f"🔍 No se encontraron más dominios en {current_url}")
-            break
+            print("⚠️ No se encontraron dominios para guardar")
 
-    if dominios_encontrados:
-        with open(file_name, 'w', encoding='utf-8') as file:
-            for dominio in dominios_encontrados:
-                file.write(dominio + '\n')
-        msg = f"💾 Guardados {len(dominios_encontrados)} dominios"
-        if palabra_clave:
-            msg += f" que contienen '{palabra_clave}'"
-        msg += f" en '{file_name}'"
-        print(msg)
-    else:
-        print(f"⚠️ No se encontraron dominios para guardar en '{file_name}'")
+        return dominios_encontrados
 
-    return dominios_encontrados
-
-def generar_urls_por_fechas(inicio, fin):
-    try:
-        fecha_inicio = datetime.strptime(inicio, '%Y%m%d')
-        fecha_fin = datetime.strptime(fin, '%Y%m%d')
-        
-        if fecha_fin < fecha_inicio:
-            raise ValueError("La fecha final no puede ser anterior a la inicial")
+    def generar_urls_por_fechas(self, inicio, fin):
+        """Genera URLs para un rango de fechas"""
+        try:
+            fecha_inicio = datetime.strptime(inicio, '%Y%m%d')
+            fecha_fin = datetime.strptime(fin, '%Y%m%d')
             
-        delta = timedelta(days=1)
-        base_urls = []
-
-        while fecha_inicio <= fecha_fin:
-            fecha_str = fecha_inicio.strftime('%Y-%m-%d')
-            date_id = fecha_inicio.strftime('%Y%m%d')
-
+            if fecha_fin < fecha_inicio:
+                raise ValueError("La fecha final no puede ser anterior a la inicial")
+                
             tlds = ['com', 'shop', 'xyz', 'net']
-            for tld in tlds:
-                url = f'https://newly-registered-domains.abtdomain.com/{fecha_str}-{tld}-newly-registered-domains-part-'
-                filename = f'{date_id}_{tld}.txt'
-                base_urls.append((url, filename))
-
-            fecha_inicio += delta
-
-        return base_urls
-    except ValueError as e:
-        print(f"❌ Error en formato de fechas: {e}")
-        return None
-
-def mostrar_menu():
-    print("\n" + "="*50)
-    print("BUSCADOR DE DOMINIOS RECIÉN REGISTRADOS".center(50))
-    print("="*50)
-    print("1. Buscar todos los dominios por rango de fechas")
-    print("2. Buscar dominios por palabra clave")
-    print("3. Salir")
-    return input("Seleccione una opción (1-3): ")
-
-def main():
-    while True:
-        opcion = mostrar_menu()
-        
-        if opcion == '3':
-            print("Saliendo del programa...")
-            break
+            urls = []
             
-        if opcion not in ('1', '2'):
-            print("❌ Opción no válida. Por favor seleccione 1, 2 o 3.")
-            continue
+            for single_date in (fecha_inicio + timedelta(n) for n in range((fecha_fin - fecha_inicio).days + 1)):
+                fecha_str = single_date.strftime('%Y-%m-%d')
+                date_id = single_date.strftime('%Y%m%d')
+                
+                for tld in tlds:
+                    url = f'https://newly-registered-domains.abtdomain.com/{fecha_str}-{tld}-newly-registered-domains-part-'
+                    filename = f'{date_id}_{tld}.txt'
+                    urls.append((url, filename))
+                    
+            return urls
+        except ValueError as e:
+            print(f"❌ Error en formato de fechas: {str(e)}")
+            return None
+
+    def mostrar_menu(self):
+        """Muestra el menú interactivo"""
+        self.show_banner()
+        print("1. Buscar todos los dominios por rango de fechas")
+        print("2. Buscar dominios por palabra clave")
+        print("3. Salir\n")
+        return input("👉 Seleccione una opción (1-3): ").strip()
+
+    def ejecutar(self):
+        """Método principal para ejecutar el programa"""
+        while True:
+            opcion = self.mostrar_menu()
             
-        inicio = input("Ingrese fecha inicial (AAAAMMDD): ")
-        fin = input("Ingrese fecha final (AAAAMMDD): ")
-        
-        base_urls = generar_urls_por_fechas(inicio, fin)
-        if not base_urls:
-            continue
-            
-        palabra_clave = None
-        if opcion == '2':
-            palabra_clave = input("Ingrese palabra clave a buscar: ").strip()
-            if not palabra_clave:
-                print("❌ Debe ingresar una palabra clave válida")
+            if opcion == '3':
+                print("\n👋 ¡Hasta pronto!")
+                break
+                
+            if opcion not in ('1', '2'):
+                print("\n❌ Opción no válida. Intente nuevamente.")
+                input("\nPresiona Enter para continuar...")
                 continue
                 
-        print(f"\nIniciando búsqueda desde {inicio} hasta {fin}...")
-        for base_url, file_name in base_urls:
-            print(f"\n🔎 Procesando: {base_url}")
-            buscar_dominios(base_url, file_name, palabra_clave)
+            try:
+                print("\n" + "="*40)
+                inicio = input("📅 Fecha inicial (AAAAMMDD): ").strip()
+                fin = input("📅 Fecha final (AAAAMMDD): ").strip()
+                
+                urls = self.generar_urls_por_fechas(inicio, fin)
+                if not urls:
+                    input("\nPresiona Enter para continuar...")
+                    continue
+                    
+                palabra_clave = None
+                if opcion == '2':
+                    palabra_clave = input("🔍 Palabra clave a buscar: ").strip()
+                    if not palabra_clave:
+                        print("❌ Debe ingresar una palabra clave válida")
+                        input("\nPresiona Enter para continuar...")
+                        continue
+                        
+                print(f"\n🔎 Iniciando búsqueda desde {inicio} hasta {fin}...")
+                for url, filename in urls:
+                    print(f"\n🌐 Procesando: {filename.replace('.txt', '')}")
+                    self.buscar_dominios(url, filename, palabra_clave)
+                    
+                input("\n✅ Búsqueda completada. Presiona Enter para continuar...")
+                
+            except Exception as e:
+                print(f"\n❌ Error inesperado: {str(e)}")
+                input("\nPresiona Enter para continuar...")
 
 if __name__ == "__main__":
-    main()
+    import os
+    hunter = DomainHunter()
+    hunter.ejecutar()
